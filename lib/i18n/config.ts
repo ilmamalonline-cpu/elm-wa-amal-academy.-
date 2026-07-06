@@ -1,5 +1,6 @@
 export type Locale = 'ar' | 'en';
 export const DEFAULT_LOCALE: Locale = 'ar';
+export const LOCALE_COOKIE = 'NEXT_LOCALE';
 
 export async function getLocale(): Promise<Locale> {
   if (typeof window !== 'undefined') {
