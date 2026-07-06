@@ -132,7 +132,7 @@ export function formatDateReadable(dateKey: string, locale: 'ar' | 'en'): string
 }
 
 /** * For a recurring booking, computes the next occurrence date on or after * `todayKey` (defaults to today in Africa/Cairo — NOT the running * process's own local date, which matters when this runs in a Server * Component on a UTC server), without needing a database row per week — * the single booking row stores day_of_week + time_slot + * recurrence_pattern, and this derives the display date. Returns null if * the series has already ended (past recurrence_end_date). */
-export function getNextOccurrenceDate(params: { firstDate: string // the scheduled_date on the original booking row dayOfWeek: number pattern: 'weekly' | 'biweekly' recurrenceEndDate: string | null todayKey?: string }): string | null {
+export function getNextOccurrenceDate(params: { firstDate: string; pattern: string; recurrenceEndDate: string | null; todayKey?: string }) {
   const { firstDate, pattern, recurrenceEndDate, todayKey = getCairoTodayKey() } = params
   const stepDays = pattern === 'biweekly' ? 14 : 7
 
