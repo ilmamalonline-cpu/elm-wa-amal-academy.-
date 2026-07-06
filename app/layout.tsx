@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Amiri, Tajawal } from 'next/font/google'
-import { getLocale, dirOf } from '../lib/i18n/config'
+import { getLocale, dirOf } from '@/lib/i18n/config'
+
 
 import './globals.css'
 
