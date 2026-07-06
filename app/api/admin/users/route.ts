@@ -20,8 +20,10 @@ async function requireAdmin() {
   } = await supabase.auth.getUser()
   if (!user) return { ok: false as const, status: 401 as const }
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') return { ok: false as const, status: 403 as const }
+  const { data: profiles } = await supabase.from('profiles').select('role').eq('id', user.id);
+const profile = profiles?.[0] as any;
+  
+if (!profile || profile.role !== 'admin') return { ok: false as const, status: 403 as const };
 
   return { ok: true as const }
 }
