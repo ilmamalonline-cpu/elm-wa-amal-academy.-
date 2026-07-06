@@ -1,7 +1,7 @@
 import Link from 'next/link'
-import { getLocale } from '@/lib/i18n/config'
-import { SoundWaveMark } from '@/components/ui/SoundWaveMark'
-
+import { getLocale } from '../lib/i18n/config'
+import { SoundWaveMark } from '../components/ui/SoundWaveMark'
+ 
 export default async function NotFound() {
   const locale = await getLocale()
   const isAr = locale === 'ar'
