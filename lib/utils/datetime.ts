@@ -151,9 +151,6 @@ export function getNextOccurrenceDate(params: { firstDate: string; pattern: stri
 
 /** * True if a booking (recurring or not) has a session occurring on * exactly `dateKey`. For non-recurring bookings this is just an equality * check; for recurring ones it checks the day-of-week, the step interval * (weekly/biweekly) measured from the first occurrence, and the * recurrence end date. */
 export function isOccurringOnDate(booking: { scheduled_date: string; day_of_week: number; is_recurring: boolean; recurrence_end_date: string | null; recurrence_pattern?: string | null }, dateKey: string) {
-  if (!booking.is_recurring) return booking.scheduled_date === dateKey
-  if (dateKey < booking.scheduled_date) return false
-  if (booking.recurrence_end_date && dateKey > booking.recurrence_end_date) return false
 
   const stepDays = booking.recurrence_pattern === 'biweekly' ? 14 : 7
   const [fy, fm, fd] = booking.scheduled_date.split('-').map(Number)
