@@ -89,11 +89,12 @@ export async function POST(request: Request) {
   // for this id — promote it to 'teacher' and fill in teacher-only fields.
   const { data: profile, error: updateError } = await admin
     .from('profiles')
-    .update({
+.update({
       role: 'teacher',
       bio: body.bio ?? null,
       price_per_session: body.price_per_session ?? null,
-    }as any)
+    })
+    
     .eq('id', created.user.id)
     .select()
     .single()
