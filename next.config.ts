@@ -9,10 +9,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  eslint: {
-    // Linting is run separately in CI; don't fail production builds on lint warnings.
-    ignoreDuringBuilds: true,
-  },
 };
 
 export default nextConfig;
