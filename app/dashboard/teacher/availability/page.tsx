@@ -1,9 +1,9 @@
 import { getProfileOrRedirect } from '@/lib/auth/getProfile'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { AvailabilityGrid } from '@/components/dashboard/AvailabilityGrid'
 
 export default async function AvailabilityPage() {
-  const profile = await getProfileOrRedirect()
+  const profile = await getProfileOrRedirect('teacher')
   const locale = await getLocale()
   const isAr = locale === 'ar'
 

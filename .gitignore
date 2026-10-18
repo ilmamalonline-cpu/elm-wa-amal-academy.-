@@ -1,0 +1,19 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# secrets — NEVER commit these (they hold the Supabase service-role key and Zoom credentials)
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+npm-debug.log*
+.vercel

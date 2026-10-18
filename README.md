@@ -27,7 +27,9 @@
 1. افتح مشروعك على [supabase.com/dashboard](https://supabase.com/dashboard)
 2. من القائمة الجانبية: **SQL Editor** → **New query**
 3. افتح ملف `supabase/schema.sql` من المشروع ده، انسخ **كل المحتوى**، الصقه، واضغط **Run**
-4. هيتعمل كل حاجة: الجداول، الـ Row Level Security، والـ functions (`book_slot`, `cancel_booking`, `mark_booking_completed`, `get_admin_stats`)
+4. هيتعمل كل حاجة: الجداول، الـ Row Level Security، والـ functions (`book_slot`, `cancel_booking`, `submit_session_feedback`, `get_admin_stats`)
+
+> 🔧 **عندك database قديمة اتعملت من النسخة اللي قبل التعديلات؟** متشغّلش `schema.sql` تاني. شغّل `supabase/migrations/20261018_security_and_logic_fixes.sql` بدلًا منه (مرة واحدة)، واقرأ `FIXES.md` للتفاصيل.
 
 ### هات الـ Service Role Key
 

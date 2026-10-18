@@ -6,6 +6,29 @@ import { createClient } from '@/lib/supabase/client'
 import { dictionary } from '@/lib/i18n/dictionary'
 import type { Locale } from '@/lib/i18n/config'
 
+/**
+ * Only follow a `next` value that is a same-site path under /dashboard.
+ * Anything else — an absolute URL ("https://evil.example"), a
+ * protocol-relative one ("//evil.example"), a backslash trick — is ignored,
+ * otherwise a crafted /login?next=... link would send a freshly
+ * logged-in user to an attacker's site (open redirect).
+ */
+function safeNextPath(next: string | null): string | null {
+  if (!next) return null
+  try {
+    // Resolve against a dummy origin: if the result leaves that origin, it
+    // wasn't a plain same-site path (the URL parser also normalizes tricks
+    // like "/\\evil.example" into "//evil.example", which is caught here).
+    const base = 'http://localhost'
+    const url = new URL(next, base)
+    if (url.origin !== base) return null
+    if (!url.pathname.startsWith('/dashboard')) return null
+    return url.pathname + url.search
+  } catch {
+    return null
+  }
+}
+
 export function LoginForm({ locale }: { locale: Locale }) {
   const t = dictionary[locale]
   const router = useRouter()
@@ -18,7 +41,7 @@ export function LoginForm({ locale }: { locale: Locale }) {
   const [error, setError] = useState<string | null>(null)
 
   const deactivated = searchParams.get('deactivated') === '1'
-  const nextPath = searchParams.get('next')
+  const nextPath = safeNextPath(searchParams.get('next'))
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

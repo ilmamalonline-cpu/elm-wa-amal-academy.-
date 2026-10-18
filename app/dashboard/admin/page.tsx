@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getProfileOrRedirect } from '@/lib/auth/getProfile'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 
 export default async function AdminHomePage() {
-  const profile = await getProfileOrRedirect()
+  const profile = await getProfileOrRedirect('admin')
   const locale = await getLocale()
   const isAr = locale === 'ar'
   const supabase = await createClient()

@@ -1,10 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { getProfileOrRedirect } from '@/lib/auth/getProfile'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { PreferencesForm } from '@/components/dashboard/PreferencesForm'
 
 export default async function PreferencesPage() {
-  const profile = await getProfileOrRedirect()
+  const profile = await getProfileOrRedirect('student')
   const locale = await getLocale()
   const supabase = await createClient()
 

@@ -1,12 +1,12 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getProfileOrRedirect } from '@/lib/auth/getProfile'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { formatTime, getCairoTodayKey, isOccurringOnDate } from '@/lib/utils/datetime'
 import type { Profile } from '@/types/database'
 
 export default async function TeacherHomePage() {
-  const profile = await getProfileOrRedirect()
+  const profile = await getProfileOrRedirect('teacher')
   const locale = await getLocale()
   const isAr = locale === 'ar'
   const supabase = await createClient()
@@ -71,8 +71,14 @@ export default async function TeacherHomePage() {
                     {formatTime(s.time_slot, locale)} · {s.session_type === 'group' ? (isAr ? 'جماعي' : 'Group') : isAr ? 'فردي' : 'Individual'}
                   </p>
                 </div>
-                {s.zoom_start_url && (
-                  <a href={s.zoom_start_url} target="_blank" rel="noopener noreferrer" className="btn-primary text-sm">
+                {s.zoom_meeting_id && (
+                  // Fresh host link fetched server-side on click (never stored / never sent to students).
+                  <a
+                    href={`/api/bookings/start?booking_id=${s.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary text-sm"
+                  >
                     {isAr ? '🎥 ابدأ الجلسة' : '🎥 Start Session'}
                   </a>
                 )}

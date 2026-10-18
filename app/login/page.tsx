@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { dictionary } from '@/lib/i18n/dictionary'
 import { LoginForm } from '@/components/auth/LoginForm'
 import { SoundWaveMark } from '@/components/ui/SoundWaveMark'

@@ -7,7 +7,8 @@ import {
   DAY_NAMES_EN,
   addDaysToDateKey,
   formatTime,
-  getWeekStartDate,
+  getCairoWeekStartDate,
+  msUntil,
 } from '@/lib/utils/datetime'
 import type { Locale } from '@/lib/i18n/config'
 import type { SessionType, TeacherAvailability } from '@/types/database'
@@ -31,7 +32,7 @@ export function AvailabilityGrid({ locale, teacherId }: { locale: Locale; teache
   const [maxGroupSize, setMaxGroupSize] = useState(4)
   const [error, setError] = useState<string | null>(null)
 
-  const baseWeekStart = getWeekStartDate()
+  const baseWeekStart = getCairoWeekStartDate()
   const weekStartDate = addDaysToDateKey(baseWeekStart, weekOffset * 7)
 
   const loadSlots = useCallback(async () => {
@@ -46,12 +47,16 @@ export function AvailabilityGrid({ locale, teacherId }: { locale: Locale; teache
   }, [supabase, teacherId, weekStartDate])
 
   useEffect(() => {
-    loadSlots()
+    const timeoutId = window.setTimeout(() => {
+      void loadSlots()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [loadSlots])
 
   const slotAt = (day: number, hour: number) => {
     const hh = String(hour).padStart(2, '0')
-    return slots.find((s) => s.day_of_week === day && s.start_time.slice(0, 2) === hh)
+    // Soft-closed rows (teacher closed a slot that had booking history) count as closed.
+    return slots.find((s) => !s.is_closed && s.day_of_week === day && s.start_time.slice(0, 2) === hh)
   }
 
   async function handleCellClick(day: number, hour: number) {
@@ -82,6 +87,7 @@ export function AvailabilityGrid({ locale, teacherId }: { locale: Locale; teache
                 : 'Could not close'
           )
         } else {
+          // Hard-deleted or soft-closed — either way it's gone from the grid.
           setSlots((prev) => prev.filter((s) => s.id !== existing.id))
         }
       } else {
@@ -100,9 +106,18 @@ export function AvailabilityGrid({ locale, teacherId }: { locale: Locale; teache
         })
         const json = await res.json().catch(() => ({}))
         if (!res.ok) {
-          setError(isAr ? 'تعذر الفتح' : 'Could not open slot')
+          if (json.error === 'SLOT_IN_PAST') {
+            setError(isAr ? 'لا يمكن فتح موعد قد مضى' : "Can't open a time that has already passed")
+          } else if (json.error === 'SLOT_ALREADY_EXISTS') {
+            setError(isAr ? 'هذا الموعد مفتوح بالفعل — جارٍ التحديث' : 'That slot is already open — refreshing')
+            loadSlots()
+          } else {
+            setError(isAr ? 'تعذر الفتح' : 'Could not open slot')
+          }
         } else if (json.slot) {
-          setSlots((prev) => [...prev, json.slot as TeacherAvailability])
+          const opened = json.slot as TeacherAvailability
+          // A re-opened slot reuses its old row, so replace by id instead of appending a duplicate.
+          setSlots((prev) => [...prev.filter((s) => s.id !== opened.id), opened])
         }
       }
     } catch {
@@ -161,7 +176,7 @@ export function AvailabilityGrid({ locale, teacherId }: { locale: Locale; teache
               min={2}
               max={12}
               value={maxGroupSize}
-              onChange={(e) => setMaxGroupSize(Number(e.target.value))}
+              onChange={(e) => setMaxGroupSize(Math.min(12, Math.max(2, Math.floor(Number(e.target.value)) || 2)))}
               className="input-field w-16 py-1 text-center"
             />
           )}
@@ -196,17 +211,24 @@ export function AvailabilityGrid({ locale, teacherId }: { locale: Locale; teache
                     const slot = slotAt(day, hour)
                     const cellId = `${day}-${hour}`
                     const isPending = pendingCell === cellId
+                    // Can't open a time that has already started (existing open slots can still be closed).
+                    const isPast = msUntil(addDaysToDateKey(weekStartDate, day), hourKey(hour)) <= 0
+                    const cannotOpen = isPast && !slot
                     return (
                       <td key={day} className="p-0.5">
                         <button
                           onClick={() => handleCellClick(day, hour)}
-                          disabled={isPending || (slot?.is_booked ?? false)}
+                          disabled={isPending || (slot?.is_booked ?? false) || cannotOpen}
                           title={
                             slot?.is_booked
                               ? isAr
                                 ? 'محجوز'
                                 : 'Booked'
-                              : slot
+                              : cannotOpen
+                                ? isAr
+                                  ? 'مضى'
+                                  : 'In the past'
+                                : slot
                                 ? isAr
                                   ? 'متاح — انقر للإغلاق'
                                   : 'Open — click to close'
@@ -220,7 +242,7 @@ export function AvailabilityGrid({ locale, teacherId }: { locale: Locale; teache
                               : slot
                                 ? 'border-sidr-600 bg-sidr-100 hover:bg-sidr-50'
                                 : 'border-mist-dark bg-transparent hover:border-sidr-500 hover:bg-sidr-50'
-                          } ${isPending ? 'opacity-50' : ''}`}
+                          } ${isPending ? 'opacity-50' : ''} ${cannotOpen ? 'cursor-not-allowed opacity-30' : ''}`}
                         />
                       </td>
                     )
@@ -249,4 +271,3 @@ export function AvailabilityGrid({ locale, teacherId }: { locale: Locale; teache
     </div>
   )
 }
-

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { dictionary } from '@/lib/i18n/dictionary'
 import { SoundWaveMark } from '@/components/ui/SoundWaveMark'
 import { LanguageToggle } from '@/components/layout/LanguageToggle'

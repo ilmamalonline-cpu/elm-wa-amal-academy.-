@@ -1,12 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { getProfileOrRedirect } from '@/lib/auth/getProfile'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { CancelBookingButton } from '@/components/dashboard/CancelBookingButton'
 import { formatDateReadable, formatDayName, formatTime } from '@/lib/utils/datetime'
-import type { Profile } from '@/types/database'
+import type { Profile, SessionFeedback } from '@/types/database'
 
 export default async function StudentSessionsPage() {
-  const profile = await getProfileOrRedirect()
+  const profile = await getProfileOrRedirect('student')
   const locale = await getLocale()
   const isAr = locale === 'ar'
   const supabase = await createClient()
@@ -21,8 +21,13 @@ export default async function StudentSessionsPage() {
     .from('session_feedback')
     .select('*')
     .eq('student_id', profile.id)
+    .order('session_date', { ascending: false })
 
-  const feedbackByBooking = new Map((feedbackRows ?? []).map((f) => [f.booking_id, f]))
+  // A weekly subscription has one feedback entry per session, so group them.
+  const feedbackByBooking = new Map<string, SessionFeedback[]>()
+  for (const f of feedbackRows ?? []) {
+    feedbackByBooking.set(f.booking_id, [...(feedbackByBooking.get(f.booking_id) ?? []), f])
+  }
 
   const teacherIds = [...new Set((bookings ?? []).map((b) => b.teacher_id))]
   const { data: teachers } = teacherIds.length
@@ -50,7 +55,7 @@ export default async function StudentSessionsPage() {
       ) : (
         <div className="mt-6 space-y-4">
           {bookings.map((b) => {
-            const feedback = feedbackByBooking.get(b.id)
+            const feedbackList = feedbackByBooking.get(b.id) ?? []
             return (
               <div key={b.id} className="card p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -66,8 +71,13 @@ export default async function StudentSessionsPage() {
                   </span>
                 </div>
 
-                {feedback && (
-                  <div className="mt-4 border-t border-mist-dark pt-4">
+                {feedbackList.map((feedback) => (
+                  <div key={feedback.id} className="mt-4 border-t border-mist-dark pt-4">
+                    {b.is_recurring && (
+                      <p className="text-ink-soft mb-1 text-xs font-semibold">
+                        {formatDateReadable(feedback.session_date, locale)}
+                      </p>
+                    )}
                     {feedback.articulation_notes && (
                       <p className="text-sm leading-relaxed text-ink">{feedback.articulation_notes}</p>
                     )}
@@ -78,7 +88,7 @@ export default async function StudentSessionsPage() {
                       </p>
                     )}
                   </div>
-                )}
+                ))}
 
                 {b.status === 'confirmed' && (
                   <div className="mt-4 flex flex-wrap gap-2">

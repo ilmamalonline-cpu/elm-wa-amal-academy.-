@@ -141,7 +141,9 @@ export async function createZoomMeeting(params: CreateMeetingParams): Promise<Zo
   const requestBody: Record<string, unknown> = {
     topic: params.topic,
     type: params.recurrence ? 8 : 2, // 8 = recurring w/ fixed time, 2 = single scheduled meeting
-    start_time: params.startTimeIso, // must already be a correct absolute UTC instant (see cairoWallTimeToUtcIso)
+    // Must be a correct absolute UTC instant (see cairoWallTimeToUtcIso). Zoom documents
+    // `yyyy-MM-ddTHH:mm:ssZ`, so drop the milliseconds that toISOString() adds.
+    start_time: params.startTimeIso.replace(/\.\d{3}Z$/, 'Z'),
     duration: params.durationMinutes,
     timezone: 'Africa/Cairo', // display only — Zoom shows invitees this local time; the instant itself is fixed by start_time above
     agenda: params.agenda ?? '',
@@ -212,4 +214,63 @@ export async function createZoomMeeting(params: CreateMeetingParams): Promise<Zo
     startUrl: json.start_url,
     password: json.password ?? null,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Host ("start") links
+// ---------------------------------------------------------------------------
+// We deliberately do NOT store start_url in the database any more:
+//  * it is the HOST link — anyone who can read it can run the meeting, and
+//    RLS can only hide rows, not columns, so a student could read it;
+//  * Zoom start URLs carry a short-lived token, so a stored copy goes stale.
+// Instead the teacher opens /api/bookings/start, which calls this to fetch a
+// fresh one and redirects to it.
+
+async function zoomRequest(path: string, method: 'GET' | 'DELETE', retried = false): Promise<Response> {
+  const token = await getAccessToken()
+  let response: Response
+  try {
+    response = await fetch(`${ZOOM_API_BASE}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    })
+  } catch (networkErr) {
+    throw new ZoomApiError(
+      `Could not reach Zoom's API server (network error). ${networkErr instanceof Error ? networkErr.message : ''}`,
+      0
+    )
+  }
+  if (response.status === 401 && !retried) {
+    cachedToken = null // stale token — mint a new one and retry once
+    return zoomRequest(path, method, true)
+  }
+  return response
+}
+
+/** Returns a fresh host start URL for an existing meeting. */
+export async function getZoomStartUrl(meetingId: string): Promise<string> {
+  const response = await zoomRequest(`/meetings/${encodeURIComponent(meetingId)}`, 'GET')
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new ZoomApiError(
+      body?.message ? `Zoom API error: ${body.message}` : `Zoom API returned HTTP ${response.status} while reading the meeting.`,
+      response.status,
+      body?.code
+    )
+  }
+  const json = await response.json()
+  if (!json.start_url) throw new ZoomApiError('Zoom did not return a start_url for this meeting.', 502)
+  return json.start_url as string
+}
+
+/** Deletes a meeting. A meeting that is already gone (404) counts as success. */
+export async function deleteZoomMeeting(meetingId: string): Promise<void> {
+  const response = await zoomRequest(`/meetings/${encodeURIComponent(meetingId)}`, 'DELETE')
+  if (response.ok || response.status === 404) return
+  const body = await response.json().catch(() => null)
+  throw new ZoomApiError(
+    body?.message ? `Zoom API error: ${body.message}` : `Zoom API returned HTTP ${response.status} while deleting the meeting.`,
+    response.status,
+    body?.code
+  )
 }

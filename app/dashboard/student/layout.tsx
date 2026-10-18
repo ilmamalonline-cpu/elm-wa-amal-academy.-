@@ -1,10 +1,10 @@
 import { getProfileOrRedirect } from '@/lib/auth/getProfile'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { dictionary } from '@/lib/i18n/dictionary'
 import { DashboardShell, type NavItem } from '@/components/dashboard/DashboardShell'
 
 export default async function StudentLayout({ children }: { children: React.ReactNode }) {
-  const profile = await getProfileOrRedirect()
+  const profile = await getProfileOrRedirect('student')
   const locale = await getLocale()
   const t = dictionary[locale]
 

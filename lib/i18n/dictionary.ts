@@ -65,6 +65,11 @@ export const dictionary = {
       zoomFailed: 'تم حجز الموعد، لكن حدث خطأ أثناء إنشاء رابط Zoom. تم إلغاء الحجز تلقائيًا — برجاء المحاولة مرة أخرى، وإن تكررت المشكلة تواصل مع الإدارة.',
       confirmed: 'تم تأكيد حجزك بنجاح',
       unauthenticated: 'يجب تسجيل الدخول أولًا',
+      slotInPast: 'هذا الموعد قد مضى. برجاء اختيار موعد قادم.',
+      alreadyBooked: 'أنت حاجز هذا الموعد بالفعل.',
+      invalidRecurrence: 'إعدادات الاشتراك المتكرر غير صحيحة. تأكد من اختيار تاريخ انتهاء مناسب.',
+      accountDisabled: 'تم إيقاف حسابك. تواصل مع الإدارة.',
+      cancelNotAllowed: 'لا يمكن إلغاء هذا الحجز.',
     },
   },
   en: {
@@ -125,6 +130,11 @@ export const dictionary = {
       zoomFailed: 'The slot was booked, but creating the Zoom link failed. The booking has been automatically cancelled — please try again, and contact the academy if this keeps happening.',
       confirmed: 'Your booking is confirmed',
       unauthenticated: 'Please log in first',
+      slotInPast: 'This time has already passed. Please choose an upcoming slot.',
+      alreadyBooked: 'You have already booked this slot.',
+      invalidRecurrence: 'The recurring subscription settings are invalid. Please choose a valid end date.',
+      accountDisabled: 'Your account has been suspended. Please contact the academy.',
+      cancelNotAllowed: 'This booking cannot be cancelled.',
     },
   },
 } as const

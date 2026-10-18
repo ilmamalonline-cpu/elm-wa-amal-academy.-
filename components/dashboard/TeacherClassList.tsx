@@ -6,6 +6,7 @@ import {
   formatDateReadable,
   formatDayName,
   formatTime,
+  getLastOccurrenceOnOrBefore,
   getNextOccurrenceDate,
 } from '@/lib/utils/datetime'
 import { CancelBookingButton } from '@/components/dashboard/CancelBookingButton'
@@ -19,17 +20,21 @@ export function TeacherClassList({
   locale,
   bookings,
   students,
-  feedbackDoneIds,
+  feedbackDates,
+  todayKey,
 }: {
   locale: Locale
   bookings: Booking[]
   students: Pick<Profile, 'id' | 'full_name'>[]
-  feedbackDoneIds: Set<string>
+  /** booking id -> session dates that already have feedback */
+  feedbackDates: Record<string, string[]>
+  /** today in Africa/Cairo, computed on the server so SSR and the browser agree */
+  todayKey: string
 }) {
   const isAr = locale === 'ar'
   const studentById = new Map(students.map((s) => [s.id, s.full_name]))
   const [openFeedbackFor, setOpenFeedbackFor] = useState<string | null>(null)
-  const [doneIds, setDoneIds] = useState(feedbackDoneIds)
+  const [doneDates, setDoneDates] = useState<Record<string, string[]>>(feedbackDates)
 
   const upcoming = bookings.filter((b) => b.status === 'confirmed')
   const completed = bookings.filter((b) => b.status === 'completed')
@@ -48,11 +53,16 @@ export function TeacherClassList({
               const displayDate = b.is_recurring
                 ? getNextOccurrenceDate({
                     firstDate: b.scheduled_date,
-                    dayOfWeek: b.day_of_week,
-                    pattern: b.recurrence_pattern as 'weekly' | 'biweekly',
+                    pattern: b.recurrence_pattern,
                     recurrenceEndDate: b.recurrence_end_date,
+                    todayKey,
                   })
                 : b.scheduled_date
+
+              // Feedback is per session: the most recent session that has already
+              // happened and doesn't have feedback yet (null = nothing to log yet).
+              const lastHeld = getLastOccurrenceOnOrBefore(b, todayKey)
+              const feedbackDate = lastHeld && !(doneDates[b.id] ?? []).includes(lastHeld) ? lastHeld : null
 
               return (
                 <div key={b.id} className="card p-5">
@@ -60,10 +70,12 @@ export function TeacherClassList({
                     <div>
                       <p className="font-semibold text-sidr-900">{studentById.get(b.student_id) ?? '—'}</p>
                       <p className="text-ink-soft text-sm">
-                        {displayDate && (
+                        {displayDate ? (
                           <>
                             {formatDayName(b.day_of_week, locale)} · {formatDateReadable(displayDate, locale)} ·{' '}
                           </>
+                        ) : (
+                          <>{isAr ? 'انتهى الاشتراك · ' : 'Series ended · '}</>
                         )}
                         {formatTime(b.time_slot, locale)}
                       </p>
@@ -76,29 +88,43 @@ export function TeacherClassList({
                         )}
                       </div>
                     </div>
-                    {b.zoom_start_url && (
-                      <a href={b.zoom_start_url} target="_blank" rel="noopener noreferrer" className="btn-primary text-sm">
+                    {b.zoom_meeting_id && (
+                      // Fresh host link fetched server-side on click (never stored / never sent to students).
+                      <a
+                        href={`/api/bookings/start?booking_id=${b.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-primary text-sm"
+                      >
                         {isAr ? '🎥 ابدأ الجلسة' : '🎥 Start Session'}
                       </a>
                     )}
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-4">
-                    <button
-                      onClick={() => setOpenFeedbackFor(openFeedbackFor === b.id ? null : b.id)}
-                      className="text-sm font-semibold text-sidr-700 hover:text-sidr-600"
-                    >
-                      {isAr ? 'تسجيل ملاحظات الجلسة' : 'Log session feedback'}
-                    </button>
+                    {feedbackDate ? (
+                      <button
+                        onClick={() => setOpenFeedbackFor(openFeedbackFor === b.id ? null : b.id)}
+                        className="text-sm font-semibold text-sidr-700 hover:text-sidr-600"
+                      >
+                        {isAr ? 'تسجيل ملاحظات الجلسة' : 'Log session feedback'}
+                        {b.is_recurring && <> · {formatDateReadable(feedbackDate, locale)}</>}
+                      </button>
+                    ) : (
+                      <span className="text-ink-soft text-xs">
+                        {isAr ? 'تُسجَّل الملاحظات بعد انتهاء الجلسة' : 'Feedback can be logged once the session has taken place'}
+                      </span>
+                    )}
                     <CancelBookingButton bookingId={b.id} locale={locale} />
                   </div>
 
-                  {openFeedbackFor === b.id && (
+                  {openFeedbackFor === b.id && feedbackDate && (
                     <FeedbackForm
                       locale={locale}
                       booking={b}
+                      sessionDate={feedbackDate}
                       onDone={() => {
-                        setDoneIds((prev) => new Set(prev).add(b.id))
+                        setDoneDates((prev) => ({ ...prev, [b.id]: [...(prev[b.id] ?? []), feedbackDate] }))
                         setOpenFeedbackFor(null)
                       }}
                     />
@@ -126,7 +152,7 @@ export function TeacherClassList({
                     {formatDateReadable(b.scheduled_date, locale)} · {formatTime(b.time_slot, locale)}
                   </p>
                 </div>
-                {doneIds.has(b.id) && (
+                {(doneDates[b.id]?.length ?? 0) > 0 && (
                   <span className="text-xs font-semibold text-sidr-700">
                     {isAr ? '✓ تم تسجيل الملاحظات' : '✓ Feedback logged'}
                   </span>
@@ -140,13 +166,30 @@ export function TeacherClassList({
   )
 }
 
+const FEEDBACK_ERRORS_AR: Record<string, string> = {
+  FEEDBACK_ALREADY_EXISTS: 'تم تسجيل ملاحظات هذه الجلسة بالفعل.',
+  SESSION_NOT_HELD_YET: 'لا يمكن تسجيل الملاحظات قبل موعد الجلسة.',
+  NOT_AUTHORIZED: 'هذا الفصل ليس من فصولك.',
+  BOOKING_NOT_ACTIVE: 'هذا الحجز لم يعد نشطًا.',
+  INVALID_SESSION_DATE: 'تاريخ الجلسة غير صحيح.',
+}
+const FEEDBACK_ERRORS_EN: Record<string, string> = {
+  FEEDBACK_ALREADY_EXISTS: 'Feedback for this session was already saved.',
+  SESSION_NOT_HELD_YET: "You can't log feedback before the session takes place.",
+  NOT_AUTHORIZED: "This isn't one of your classes.",
+  BOOKING_NOT_ACTIVE: 'This booking is no longer active.',
+  INVALID_SESSION_DATE: 'Invalid session date.',
+}
+
 function FeedbackForm({
   locale,
   booking,
+  sessionDate,
   onDone,
 }: {
   locale: Locale
   booking: Booking
+  sessionDate: string
   onDone: () => void
 }) {
   const isAr = locale === 'ar'
@@ -181,7 +224,7 @@ function FeedbackForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           booking_id: booking.id,
-          student_id: booking.student_id,
+          session_date: sessionDate,
           articulation_notes: notes || undefined,
           homework: homework || undefined,
           rating: rating || undefined,
@@ -190,7 +233,8 @@ function FeedbackForm({
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
-        setError(json.error ?? (isAr ? 'تعذر الحفظ' : 'Could not save'))
+        const known = (isAr ? FEEDBACK_ERRORS_AR : FEEDBACK_ERRORS_EN)[json.error as string]
+        setError(known ?? (isAr ? 'تعذر الحفظ' : 'Could not save'))
         setSubmitting(false)
         return
       }
@@ -291,7 +335,7 @@ function FeedbackForm({
       {error && <p className="text-danger text-sm font-medium">{error}</p>}
 
       <button onClick={handleSubmit} disabled={submitting} className="btn-primary">
-        {submitting ? (isAr ? 'جارٍ الحفظ...' : 'Saving...') : isAr ? 'حفظ وإنهاء الجلسة' : 'Save & complete session'}
+        {submitting ? (isAr ? 'جارٍ الحفظ...' : 'Saving...') : isAr ? 'حفظ الملاحظات' : 'Save feedback'}
       </button>
     </div>
   )

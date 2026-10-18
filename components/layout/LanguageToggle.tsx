@@ -8,7 +8,7 @@ export function LanguageToggle({ locale }: { locale: Locale }) {
 
   function switchTo(next: Locale) {
     if (next === locale) return
-    document.cookie = `${LOCALE_COOKIE}=${next}; path=/; max-age=31536000`
+    document.cookie = `${LOCALE_COOKIE}=${next}; path=/; max-age=31536000; SameSite=Lax`
     router.refresh()
   }
 

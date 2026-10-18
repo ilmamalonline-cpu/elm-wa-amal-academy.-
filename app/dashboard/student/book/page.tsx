@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { BookingFlow } from '@/components/dashboard/BookingFlow'
 
 export default async function BookSessionPage() {

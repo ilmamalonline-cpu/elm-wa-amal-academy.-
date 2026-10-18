@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { formatDateReadable, formatTime } from '@/lib/utils/datetime'
 import type { BookingStatus, Profile } from '@/types/database'
 
@@ -14,7 +14,10 @@ export default async function AdminBookingsPage({
   const locale = await getLocale()
   const isAr = locale === 'ar'
   const { status } = await searchParams
-  const activeStatus = (status as BookingStatus | undefined) ?? 'all'
+  // Unknown ?status= values fall back to 'all' (a bad enum value would make Postgres error and show an empty list).
+  const activeStatus: BookingStatus | 'all' = STATUSES.includes(status as BookingStatus | 'all')
+    ? (status as BookingStatus | 'all')
+    : 'all'
   const supabase = await createClient()
 
   let query = supabase.from('bookings').select('*').order('scheduled_date', { ascending: false }).limit(100)

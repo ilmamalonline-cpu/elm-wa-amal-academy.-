@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { DAY_NAMES_AR, DAY_NAMES_EN } from '@/lib/utils/datetime'
 import type { Profile } from '@/types/database'
 

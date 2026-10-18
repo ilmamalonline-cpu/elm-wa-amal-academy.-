@@ -103,6 +103,16 @@ export function getCairoTodayKey(): string {
   return dtf.format(new Date()) // en-CA locale formats as YYYY-MM-DD
 }
 
+/** The Sunday that starts the current week in Africa/Cairo (what the teacher
+ * grid and the student booking page both use, so they always agree on
+ * "this week" regardless of the viewer's own browser timezone). */
+export function getCairoWeekStartDate(): string {
+  const today = getCairoTodayKey()
+  const [y, m, d] = today.split('-').map(Number)
+  const dayOfWeek = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  return addDaysToDateKey(today, -dayOfWeek)
+}
+
 /** Milliseconds until a given Cairo-local date/time. Negative if already past. */
 export function msUntil(dateKey: string, timeKey: string): number {
   return new Date(cairoWallTimeToUtcIso(dateKey, timeKey)).getTime() - Date.now()
@@ -131,35 +141,85 @@ export function formatDateReadable(dateKey: string, locale: 'ar' | 'en'): string
   })
 }
 
-/** * For a recurring booking, computes the next occurrence date on or after * `todayKey` (defaults to today in Africa/Cairo — NOT the running * process's own local date, which matters when this runs in a Server * Component on a UTC server), without needing a database row per week — * the single booking row stores day_of_week + time_slot + * recurrence_pattern, and this derives the display date. Returns null if * the series has already ended (past recurrence_end_date). */
-export function getNextOccurrenceDate(params: { firstDate: string; pattern: string; recurrenceEndDate: string | null; todayKey?: string }) {
-  const { firstDate, pattern, recurrenceEndDate, todayKey = getCairoTodayKey() } = params
-  const stepDays = pattern === 'biweekly' ? 14 : 7
+/** Whole days from dateKey `a` to dateKey `b` (b - a). Uses UTC math so DST never skews it. */
+export function daysBetween(a: string, b: string): number {
+  const [ay, am, ad] = a.split('-').map(Number)
+  const [by, bm, bd] = b.split('-').map(Number)
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000)
+}
 
-  let candidate = firstDate
-  // Walk forward in fixed steps from the first occurrence until we reach
-  // today-or-later. Bounded to 2 years of steps as a safety valve against
-  // an accidental infinite loop from bad input data.
-  for (let i = 0; i < 104; i++) {
-    if (candidate >= todayKey) break
-    candidate = addDaysToDateKey(candidate, stepDays)
-  }
+type SeriesShape = {
+  scheduled_date: string
+  is_recurring: boolean
+  recurrence_end_date: string | null
+  recurrence_pattern?: string | null
+}
+
+function stepDaysOf(pattern: string | null | undefined): number {
+  return pattern === 'biweekly' ? 14 : 7
+}
+
+/**
+ * For a recurring booking, computes the next occurrence date on or after
+ * `todayKey` (defaults to today in Africa/Cairo — NOT the running process's
+ * own local date, which matters on a UTC server) without needing a database
+ * row per week. Returns null if the series has already ended.
+ *
+ * Pure arithmetic (no loop cap), so a series that started years ago still
+ * resolves correctly.
+ */
+export function getNextOccurrenceDate(params: {
+  firstDate: string
+  pattern: string
+  recurrenceEndDate: string | null
+  todayKey?: string
+}) {
+  const { firstDate, pattern, recurrenceEndDate, todayKey = getCairoTodayKey() } = params
+  const step = stepDaysOf(pattern)
+
+  const diff = daysBetween(firstDate, todayKey)
+  const candidate = diff <= 0 ? firstDate : addDaysToDateKey(firstDate, Math.ceil(diff / step) * step)
 
   if (recurrenceEndDate && candidate > recurrenceEndDate) return null
   return candidate
 }
 
-/** * True if a booking (recurring or not) has a session occurring on * exactly `dateKey`. For non-recurring bookings this is just an equality * check; for recurring ones it checks the day-of-week, the step interval * (weekly/biweekly) measured from the first occurrence, and the * recurrence end date. */
-export function isOccurringOnDate(booking: { scheduled_date: string; day_of_week: number; is_recurring: boolean; recurrence_end_date: string | null; recurrence_pattern?: string | null }, dateKey: string) {
+/**
+ * The most recent occurrence on or before `dateKey` (defaults to today in
+ * Cairo), or null if the series hasn't started yet. For one-off bookings
+ * this is scheduled_date when it's not in the future. Used to decide which
+ * session a teacher is logging feedback for.
+ */
+export function getLastOccurrenceOnOrBefore(booking: SeriesShape, dateKey: string = getCairoTodayKey()): string | null {
+  if (!booking.is_recurring) {
+    return booking.scheduled_date <= dateKey ? booking.scheduled_date : null
+  }
+  const diff = daysBetween(booking.scheduled_date, dateKey)
+  if (diff < 0) return null
+  const step = stepDaysOf(booking.recurrence_pattern)
+  let candidate = addDaysToDateKey(booking.scheduled_date, Math.floor(diff / step) * step)
+  if (booking.recurrence_end_date && candidate > booking.recurrence_end_date) {
+    // Series already ended: the last occurrence is the last step on/before the end date.
+    const endDiff = daysBetween(booking.scheduled_date, booking.recurrence_end_date)
+    if (endDiff < 0) return null
+    candidate = addDaysToDateKey(booking.scheduled_date, Math.floor(endDiff / step) * step)
+  }
+  return candidate
+}
 
-  const stepDays = booking.recurrence_pattern === 'biweekly' ? 14 : 7
-  const [fy, fm, fd] = booking.scheduled_date.split('-').map(Number)
-  const [dy, dm, dd] = dateKey.split('-').map(Number)
-  const first = Date.UTC(fy, fm - 1, fd)
-  const target = Date.UTC(dy, dm - 1, dd)
-  const diffDays = Math.round((target - first) / 86400000)
+/**
+ * True if a booking (recurring or not) has a session on exactly `dateKey`.
+ * One-off bookings match only their own date; recurring ones match on the
+ * weekly/biweekly step measured from the first occurrence, and stop at
+ * recurrence_end_date.
+ */
+export function isOccurringOnDate(booking: SeriesShape & { day_of_week?: number }, dateKey: string) {
+  if (!booking.is_recurring) return booking.scheduled_date === dateKey
 
-  return diffDays >= 0 && diffDays % stepDays === 0
+  const diffDays = daysBetween(booking.scheduled_date, dateKey)
+  if (diffDays < 0 || diffDays % stepDaysOf(booking.recurrence_pattern) !== 0) return false
+  if (booking.recurrence_end_date && dateKey > booking.recurrence_end_date) return false
+  return true
 }
 
 export function breakdownDuration(ms: number) {
@@ -169,4 +229,4 @@ export function breakdownDuration(ms: number) {
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
   return { days, hours, minutes, seconds, totalSeconds }
-                                      }
+}

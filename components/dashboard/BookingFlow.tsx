@@ -7,7 +7,8 @@ import {
   formatDateReadable,
   formatDayName,
   formatTime,
-  getWeekStartDate,
+  getCairoWeekStartDate,
+  msUntil,
 } from '@/lib/utils/datetime'
 import type { Locale } from '@/lib/i18n/config'
 import type { Booking, Profile, RecurrencePattern, TeacherAvailability } from '@/types/database'
@@ -23,6 +24,8 @@ export function BookingFlow({ teachers, locale }: { teachers: Profile[]; locale:
   const [slots, setSlots] = useState<TeacherAvailability[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [selectedSlot, setSelectedSlot] = useState<TeacherAvailability | null>(null)
+  // 0 = this week … 4 = four weeks ahead (same range the teacher can open on their grid)
+  const [weekOffset, setWeekOffset] = useState(0)
 
   const [recurring, setRecurring] = useState(false)
   const [pattern, setPattern] = useState<RecurrencePattern>('weekly')
@@ -32,40 +35,62 @@ export function BookingFlow({ teachers, locale }: { teachers: Profile[]; locale:
   const [error, setError] = useState<string | null>(null)
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null)
 
-  async function selectTeacher(teacher: Profile) {
-    setSelectedTeacher(teacher)
-    setStep('slot')
+  async function loadSlots(teacher: Profile, offset: number) {
     setLoadingSlots(true)
     setError(null)
 
-    const weekStart = getWeekStartDate()
+    const weekStart = addDaysToDateKey(getCairoWeekStartDate(), offset * 7)
     const { data, error: fetchError } = await supabase
       .from('teacher_availability')
       .select('*')
       .eq('teacher_id', teacher.id)
       .eq('week_start_date', weekStart)
       .eq('is_booked', false)
+      .eq('is_closed', false)
       .order('day_of_week')
       .order('start_time')
 
     if (fetchError) {
       setError(isAr ? 'تعذر تحميل المواعيد المتاحة.' : 'Could not load open slots.')
     } else {
-      setSlots(data ?? [])
+      // Hide slots that have already started (the server rejects them too).
+      setSlots(
+        (data ?? []).filter(
+          (slot) => msUntil(addDaysToDateKey(slot.week_start_date, slot.day_of_week), slot.start_time) > 0
+        )
+      )
     }
     setLoadingSlots(false)
+  }
+
+  async function selectTeacher(teacher: Profile) {
+    setSelectedTeacher(teacher)
+    setWeekOffset(0)
+    setStep('slot')
+    await loadSlots(teacher, 0)
+  }
+
+  async function changeWeek(offset: number) {
+    if (!selectedTeacher || offset < 0 || offset > 4) return
+    setWeekOffset(offset)
+    await loadSlots(selectedTeacher, offset)
   }
 
   function selectSlot(slot: TeacherAvailability) {
     setSelectedSlot(slot)
     setRecurring(false)
     setPattern('weekly')
-    setEndDate(addDaysToDateKey(new Date().toISOString().slice(0, 10), 56)) // sensible default: 8 weeks out
+    // sensible default: 8 weeks after the first session
+    setEndDate(addDaysToDateKey(addDaysToDateKey(slot.week_start_date, slot.day_of_week), 56))
     setStep('confirm')
   }
 
   async function handleConfirm() {
     if (!selectedSlot) return
+    if (recurring && !endDate) {
+      setError(isAr ? 'اختر تاريخ انتهاء الاشتراك.' : 'Please choose an end date for the subscription.')
+      return
+    }
     setSubmitting(true)
     setError(null)
 
@@ -156,15 +181,37 @@ export function BookingFlow({ teachers, locale }: { teachers: Profile[]; locale:
         <h2 className="font-display mt-3 text-lg font-bold text-sidr-900">
           {isAr ? `الأوقات الفارغة — ${selectedTeacher.full_name}` : `Open times — ${selectedTeacher.full_name}`}
         </h2>
-        <p className="text-ink-soft text-sm">{isAr ? 'الأسبوع الحالي' : 'This week'}</p>
+        <div className="mt-1 flex items-center gap-3 text-sm">
+          <button
+            onClick={() => changeWeek(weekOffset - 1)}
+            disabled={weekOffset === 0 || loadingSlots}
+            className="font-semibold text-sidr-700 hover:text-sidr-600 disabled:opacity-40"
+          >
+            {isAr ? '› السابق' : '‹ Previous'}
+          </button>
+          <span className="text-ink-soft">
+            {weekOffset === 0
+              ? isAr ? 'الأسبوع الحالي' : 'This week'
+              : weekOffset === 1
+                ? isAr ? 'الأسبوع القادم' : 'Next week'
+                : isAr ? `بعد ${weekOffset} أسابيع` : `In ${weekOffset} weeks`}
+          </span>
+          <button
+            onClick={() => changeWeek(weekOffset + 1)}
+            disabled={weekOffset === 4 || loadingSlots}
+            className="font-semibold text-sidr-700 hover:text-sidr-600 disabled:opacity-40"
+          >
+            {isAr ? 'التالي ‹' : 'Next ›'}
+          </button>
+        </div>
 
         {loadingSlots ? (
           <p className="text-ink-soft mt-6 text-sm">{isAr ? 'جارٍ التحميل...' : 'Loading...'}</p>
         ) : slots.length === 0 ? (
           <p className="card text-ink-soft mt-6 p-6 text-sm">
             {isAr
-              ? 'لا توجد مواعيد فارغة هذا الأسبوع مع هذا المعلم. جرّب معلمًا آخر أو راجع الأسبوع القادم.'
-              : "No open slots this week with this teacher. Try another teacher or check back next week."}
+              ? 'لا توجد مواعيد فارغة في هذا الأسبوع مع هذا المعلم. جرّب أسبوعًا آخر أو معلمًا آخر.'
+              : "No open slots this week with this teacher. Try another week or another teacher."}
           </p>
         ) : (
           <div className="mt-4 space-y-5">
@@ -198,7 +245,7 @@ export function BookingFlow({ teachers, locale }: { teachers: Profile[]; locale:
 
   // ---------------- STEP: confirm ----------------
   if (step === 'confirm' && selectedSlot && selectedTeacher) {
-    const dateKey = addDaysToDateKey(getWeekStartDate(), selectedSlot.day_of_week)
+    const dateKey = addDaysToDateKey(selectedSlot.week_start_date, selectedSlot.day_of_week)
 
     return (
       <div className="mx-auto max-w-lg">

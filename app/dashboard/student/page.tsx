@@ -1,20 +1,22 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getProfileOrRedirect } from '@/lib/auth/getProfile'
-import { getLocale } from '@/lib/i18n/config'
+import { getLocale } from '@/lib/i18n/server'
 import { dictionary } from '@/lib/i18n/dictionary'
 import { CountdownTimer } from '@/components/dashboard/CountdownTimer'
 import {
+  addDaysToDateKey,
   formatDateReadable,
   formatDayName,
   formatTime,
   getCairoTodayKey,
   getNextOccurrenceDate,
+  msUntil,
 } from '@/lib/utils/datetime'
 import type { Booking, Profile } from '@/types/database'
 
 export default async function StudentHomePage() {
-  const profile = await getProfileOrRedirect()
+  const profile = await getProfileOrRedirect('student')
   const locale = await getLocale()
   const t = dictionary[locale]
   const isAr = locale === 'ar'
@@ -40,16 +42,25 @@ export default async function StudentHomePage() {
   // than the day it was first booked.
   const upcoming = (bookings ?? [])
     .map((b) => {
-      const nextDate = b.is_recurring
-        ? getNextOccurrenceDate({
-            firstDate: b.scheduled_date,
-            dayOfWeek: b.day_of_week,
-            pattern: b.recurrence_pattern as 'weekly' | 'biweekly',
-            recurrenceEndDate: b.recurrence_end_date,
-          })
-        : b.scheduled_date >= todayKey
-          ? b.scheduled_date
-          : null
+      const pickDate = (fromKey: string) =>
+        b.is_recurring
+          ? getNextOccurrenceDate({
+              firstDate: b.scheduled_date,
+              pattern: b.recurrence_pattern,
+              recurrenceEndDate: b.recurrence_end_date,
+              todayKey: fromKey,
+            })
+          : b.scheduled_date >= fromKey
+            ? b.scheduled_date
+            : null
+
+      let nextDate = pickDate(todayKey)
+      // A session stays "current" until it has run for its full duration. If
+      // today's session is already over, point at the one after it instead of
+      // showing a "session started" banner until midnight.
+      if (nextDate && msUntil(nextDate, b.time_slot) < -b.duration_minutes * 60_000) {
+        nextDate = pickDate(addDaysToDateKey(nextDate, 1))
+      }
       return nextDate ? { booking: b, nextDate } : null
     })
     .filter((x): x is { booking: Booking; nextDate: string } => x !== null)

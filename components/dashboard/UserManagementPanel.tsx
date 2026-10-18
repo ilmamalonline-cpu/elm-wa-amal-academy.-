@@ -15,6 +15,7 @@ export function UserManagementPanel({
   const [users, setUsers] = useState(initialUsers)
   const [filter, setFilter] = useState<UserRole | 'all'>('all')
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const roleLabel: Record<UserRole, string> = isAr
     ? { admin: 'مدير', teacher: 'معلم', student: 'طالب' }
@@ -22,15 +23,28 @@ export function UserManagementPanel({
 
   const filtered = filter === 'all' ? users : users.filter((u) => u.role === filter)
 
+  function describeFailure(code: string | undefined): string {
+    if (code === 'CANNOT_MODIFY_SELF') return isAr ? 'لا يمكنك تعديل حسابك أنت.' : "You can't change your own account here."
+    if (code === 'CANNOT_DELETE_ADMIN') return isAr ? 'لا يمكن حذف مدير. غيّر دوره أولًا.' : "Admins can't be deleted. Change their role first."
+    return isAr ? 'تعذر تنفيذ العملية. حاول مرة أخرى.' : 'The action failed. Please try again.'
+  }
+
   async function toggleActive(user: Profile) {
-    const res = await fetch('/api/admin/users', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: user.id, is_active: !user.is_active }),
-    })
-    if (res.ok) {
-      const json = await res.json()
-      setUsers((prev) => prev.map((u) => (u.id === user.id ? json.user : u)))
+    setActionError(null)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id, is_active: !user.is_active }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setUsers((prev) => prev.map((u) => (u.id === user.id ? json.user : u)))
+      } else {
+        setActionError(describeFailure(json.error))
+      }
+    } catch {
+      setActionError(isAr ? 'تعذر الاتصال بالخادم' : 'Could not reach the server')
     }
   }
 
@@ -38,9 +52,17 @@ export function UserManagementPanel({
     if (!confirm(isAr ? `حذف حساب ${user.full_name}؟ هذا الإجراء لا يمكن التراجع عنه.` : `Delete ${user.full_name}'s account? This cannot be undone.`)) {
       return
     }
-    const res = await fetch(`/api/admin/users?user_id=${user.id}`, { method: 'DELETE' })
-    if (res.ok) {
-      setUsers((prev) => prev.filter((u) => u.id !== user.id))
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/admin/users?user_id=${user.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setUsers((prev) => prev.filter((u) => u.id !== user.id))
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setActionError(describeFailure(json.error))
+      }
+    } catch {
+      setActionError(isAr ? 'تعذر الاتصال بالخادم' : 'Could not reach the server')
     }
   }
 
@@ -74,6 +96,8 @@ export function UserManagementPanel({
           }}
         />
       )}
+
+      {actionError && <p className="text-danger mt-3 text-sm font-medium">{actionError}</p>}
 
       <div className="mt-4 space-y-2">
         {filtered.map((u) => (

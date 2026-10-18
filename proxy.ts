@@ -48,51 +48,75 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isAuthPath = AUTH_PATHS.includes(pathname)
   const isDashboardPath = pathname.startsWith('/dashboard')
+  const isApiPath = pathname.startsWith('/api/')
 
-  // Not logged in and trying to open a dashboard -> bounce to /login
-  if (!user && isDashboardPath) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('next', pathname)
-    return NextResponse.redirect(url)
+  // A bare NextResponse.redirect() would DROP any cookies Supabase just
+  // refreshed (or cleared) above, which can randomly log people out. Always
+  // redirect through this helper so those cookies travel with the redirect.
+  const redirectTo = (url: URL) => {
+    const redirect = NextResponse.redirect(url)
+    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie))
+    return redirect
   }
 
-  if (user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, is_active')
-      .eq('id', user.id)
-      .single()
-
-    const role = profile?.role ?? 'student'
-    const roleHome = `/dashboard/${role}`
-
-    // Already logged in -> no need to see the login/register forms again
-    if (isAuthPath) {
-      const url = request.nextUrl.clone()
-      url.pathname = roleHome
-      return NextResponse.redirect(url)
-    }
-
-    // Admin deactivated this account -> sign them out of the app area
-    if (profile && profile.is_active === false && isDashboardPath) {
+  // Not logged in and trying to open a dashboard -> bounce to /login
+  if (!user) {
+    if (isDashboardPath) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
-      url.searchParams.set('deactivated', '1')
-      return NextResponse.redirect(url)
+      url.search = ''
+      url.searchParams.set('next', pathname)
+      return redirectTo(url)
     }
+    return response
+  }
 
-    // Role fencing: a student can't open /dashboard/teacher/*, etc.
-    if (isDashboardPath) {
-      const requestedRole = pathname.split('/')[2]
-      if (
-        (ROLE_PREFIXES as readonly string[]).includes(requestedRole) &&
-        requestedRole !== role
-      ) {
-        const url = request.nextUrl.clone()
-        url.pathname = roleHome
-        return NextResponse.redirect(url)
-      }
+  // The landing page etc. don't need the profile lookup — skip the DB round trip.
+  if (!isAuthPath && !isDashboardPath && !isApiPath) return response
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, is_active')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  // Admin deactivated this account. This check comes BEFORE the "already
+  // logged in -> leave /login" redirect below; with the opposite order a
+  // suspended user bounced /dashboard -> /login -> /dashboard forever
+  // (ERR_TOO_MANY_REDIRECTS) and never saw the "suspended" message. We now
+  // clear their session so /login actually renders.
+  if (profile && profile.is_active === false) {
+    if (isApiPath) {
+      return NextResponse.json({ error: 'ACCOUNT_DEACTIVATED' }, { status: 403 })
+    }
+    await supabase.auth.signOut({ scope: 'local' })
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.search = ''
+    url.searchParams.set('deactivated', '1')
+    return redirectTo(url)
+  }
+
+  const role = profile?.role ?? 'student'
+  const roleHome = `/dashboard/${role}`
+
+  // Already logged in -> no need to see the login/register forms again
+  if (isAuthPath) {
+    const url = request.nextUrl.clone()
+    url.pathname = roleHome
+    url.search = ''
+    return redirectTo(url)
+  }
+
+  // Role fencing: a student can't open /dashboard/teacher/*, etc.
+  // (Each role layout re-checks this too — defense in depth.)
+  if (isDashboardPath) {
+    const requestedRole = pathname.split('/')[2]
+    if ((ROLE_PREFIXES as readonly string[]).includes(requestedRole) && requestedRole !== role) {
+      const url = request.nextUrl.clone()
+      url.pathname = roleHome
+      url.search = ''
+      return redirectTo(url)
     }
   }
 

@@ -1,9 +1,17 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import type { Profile } from '@/types/database'
+import type { Profile, UserRole } from '@/types/database'
 
-/** * Server-side helper for dashboard layouts: returns the signed-in user's * profile row, or redirects to /login. proxy.ts already gates * unauthenticated access to /dashboard/*, so hitting the redirect here * would only happen in an edge case (e.g. the profile row itself is * missing) — but layouts should never assume the network/DB call * succeeds without checking. */
-export async function getProfileOrRedirect(): Promise<Profile> {
+/**
+ * Server-side helper for dashboard layouts: returns the signed-in user's
+ * profile row, or redirects.
+ *
+ * proxy.ts already gates unauthenticated access, deactivated accounts and
+ * cross-role access to /dashboard/*, but layouts are the last line of
+ * defense, so this re-checks them. Pass the role the layout is for
+ * (e.g. 'admin') and anyone else is sent to their own dashboard.
+ */
+export async function getProfileOrRedirect(expectedRole?: UserRole): Promise<Profile> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -17,6 +25,15 @@ export async function getProfileOrRedirect(): Promise<Profile> {
 
   if (!profile) {
     redirect('/login')
+  }
+
+  // proxy.ts signs suspended users out when it sees this redirect.
+  if (profile.is_active === false) {
+    redirect('/login?deactivated=1')
+  }
+
+  if (expectedRole && profile.role !== expectedRole) {
+    redirect(`/dashboard/${profile.role}`)
   }
 
   return profile
