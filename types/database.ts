@@ -1,10 +1,13 @@
 // types/database.ts
-// Hand-written to mirror supabase/schema.sql exactly. If you change the SQL
-// schema, update this file to match. Once your project is linked to the
-// Supabase CLI you can also regenerate this with:
-//   npx supabase gen types typescript --project-id fotjpqvwxcygakvnirtz > types/database.ts
-// (review the diff before committing — the generated file won't include the
-// hand-written convenience aliases at the bottom).
+// Hand-written to mirror supabase/schema.sql exactly.
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
 export type UserRole = 'admin' | 'teacher' | 'student'
 export type SessionType = 'individual' | 'group'
@@ -44,6 +47,8 @@ export interface Database {
           bio?: string | null
           price_per_session?: number | null
           is_active?: boolean
+          created_at?: string
+          updated_at?: string
         }
         Update: {
           email?: string
@@ -54,7 +59,9 @@ export interface Database {
           bio?: string | null
           price_per_session?: number | null
           is_active?: boolean
+          updated_at?: string
         }
+        Relationships: []
       }
       student_preferences: {
         Row: {
@@ -71,12 +78,15 @@ export interface Database {
           preferred_days?: number[]
           preferred_hour_slots?: string[]
           notes?: string | null
+          updated_at?: string
         }
         Update: {
           preferred_days?: number[]
           preferred_hour_slots?: string[]
           notes?: string | null
+          updated_at?: string
         }
+        Relationships: []
       }
       teacher_availability: {
         Row: {
@@ -103,6 +113,7 @@ export interface Database {
           session_type?: SessionType
           max_students_group?: number
           is_booked?: boolean
+          created_at?: string
         }
         Update: {
           start_time?: string
@@ -112,6 +123,7 @@ export interface Database {
           max_students_group?: number
           is_booked?: boolean
         }
+        Relationships: []
       }
       bookings: {
         Row: {
@@ -135,8 +147,6 @@ export interface Database {
           created_at: string
           updated_at: string
         }
-        // Bookings have no direct insert policy — created exclusively via
-        // the book_slot() RPC. See supabase/schema.sql.
         Insert: never
         Update: {
           zoom_meeting_id?: string | null
@@ -144,6 +154,7 @@ export interface Database {
           zoom_start_url?: string | null
           status?: BookingStatus
         }
+        Relationships: []
       }
       session_feedback: {
         Row: {
@@ -166,6 +177,7 @@ export interface Database {
           tajweed_errors?: TajweedError[]
           homework?: string | null
           rating?: number | null
+          created_at?: string
         }
         Update: {
           articulation_notes?: string | null
@@ -173,7 +185,11 @@ export interface Database {
           homework?: string | null
           rating?: number | null
         }
+        Relationships: []
       }
+    }
+    Views: {
+      [_ in never]: never
     }
     Functions: {
       book_slot: {
@@ -203,10 +219,16 @@ export interface Database {
         }[]
       }
     }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
 }
 
-// ---- Convenience row aliases used throughout the app ----
+// ---- Convenience row aliases ----
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type StudentPreferences = Database['public']['Tables']['student_preferences']['Row']
 export type TeacherAvailability = Database['public']['Tables']['teacher_availability']['Row']
