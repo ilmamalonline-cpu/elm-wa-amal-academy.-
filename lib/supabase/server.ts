@@ -5,8 +5,8 @@
 //
 // This client still respects Row Level Security as the calling user
 // (auth.uid() inside RLS policies and RPC functions resolves correctly).
-// For operations that must bypass RLS entirely (e.g. an admin creating a
-// new teacher account), use lib/supabase/admin.ts instead.
+// All academy writes use the signed-in user's RLS permissions. The platform
+// does not need a browser- or server-exposed service-role client.
 
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
