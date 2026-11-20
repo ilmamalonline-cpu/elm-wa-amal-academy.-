@@ -32,40 +32,22 @@ export async function proxy(request: NextRequest) {
     return redirected
   }
 
-  if (!user) {
-    if (isDashboardPath) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/login'
-      url.search = ''
-      return redirectWithCookies(url)
-    }
-    return response
-  }
-
-  if (!isAuthPath && !isDashboardPath) return response
-
-  const { data: admin } = await supabase.from('academy_admins').select('id').eq('id', user.id).maybeSingle()
-  const { data: teacher } = admin
-    ? { data: null }
-    : await supabase.from('academy_teachers').select('id').eq('id', user.id).eq('status', 'active').maybeSingle()
-  const role = admin ? 'admin' : teacher ? 'teacher' : 'guardian'
-  const roleHome = `/dashboard/${role}`
-
-  if (isAuthPath) {
+  if (!user && isDashboardPath) {
     const url = request.nextUrl.clone()
-    url.pathname = roleHome
+    url.pathname = '/login'
     url.search = ''
     return redirectWithCookies(url)
   }
 
-  const requestedRole = pathname.split('/')[2]
-  if (requestedRole && ['guardian', 'teacher', 'admin'].includes(requestedRole) && requestedRole !== role) {
+  if (user && isAuthPath) {
     const url = request.nextUrl.clone()
-    url.pathname = roleHome
+    url.pathname = '/dashboard'
     url.search = ''
     return redirectWithCookies(url)
   }
 
+  // Dashboard pages resolve and enforce the role on the server. The guardian
+  // page remains available to signed-in adults who also hold another role.
   return response
 }
 

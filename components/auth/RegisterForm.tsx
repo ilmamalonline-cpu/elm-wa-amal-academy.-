@@ -23,10 +23,12 @@ export function RegisterForm({ locale }: { locale: Locale }) {
     setError('')
     const supabase = createClient()
     const cleanEmail = normalizeEmail(email)
+    const callback = new URL('/auth/callback', window.location.origin)
+    callback.searchParams.set('next', '/dashboard')
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
-      options: { data: { display_name: name.trim(), locale, consent_version: CONSENT_VERSION } },
+      options: { data: { display_name: name.trim(), locale, consent_version: CONSENT_VERSION }, emailRedirectTo: callback.toString() },
     })
     if (signUpError) {
       const text = signUpError.message.toLowerCase()

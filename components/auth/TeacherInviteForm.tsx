@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Locale } from '@/lib/academy/domain'
 
-export function TeacherInviteForm({ locale }: { locale: Locale }) {
+export function TeacherInviteForm({ locale, emailConfirmed = false }: { locale: Locale; emailConfirmed?: boolean }) {
   const ar = locale === 'ar'
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -48,10 +48,12 @@ export function TeacherInviteForm({ locale }: { locale: Locale }) {
   async function register(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setBusy(true); setError(''); setNotice('')
+    const callback = new URL('/auth/callback', window.location.origin)
+    callback.searchParams.set('next', '/teacher-invite?confirmed=1')
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
-      options: { data: { display_name: name.trim() } },
+      options: { data: { display_name: name.trim() }, emailRedirectTo: callback.toString() },
     })
     if (signUpError) {
       const text = signUpError.message.toLowerCase()
@@ -74,7 +76,9 @@ export function TeacherInviteForm({ locale }: { locale: Locale }) {
     router.refresh()
   }
 
-  if (!token) return <p role="alert" className="rounded-xl bg-danger/10 p-4 text-sm text-danger">{ar ? 'الرابط غير مكتمل. اطلب من مسؤول الأكاديمية رابط دعوة جديدًا.' : 'The link is incomplete. Ask the academy administrator for a new invitation.'}</p>
+  if (!token) return emailConfirmed
+    ? <p role="status" className="rounded-xl bg-sidr-50 p-4 text-sm leading-6 text-sidr-700">{ar ? 'تم تأكيد البريد. افتح رابط الدعوة الأصلي مرة أخرى لتفعيل الحساب.' : 'Your email is confirmed. Reopen the original invitation link to activate your account.'}</p>
+    : <p role="alert" className="rounded-xl bg-danger/10 p-4 text-sm text-danger">{ar ? 'الرابط غير مكتمل. اطلب من مسؤول الأكاديمية رابط دعوة جديدًا.' : 'The link is incomplete. Ask the academy administrator for a new invitation.'}</p>
 
   if (signedInEmail) return <div className="space-y-4"><p className="rounded-xl bg-sidr-50 p-4 text-sm text-sidr-700">{ar ? 'مسجّل الدخول بالبريد:' : 'Signed in as:'} <bdi dir="ltr">{signedInEmail}</bdi></p><button className="btn-primary w-full" disabled={busy} onClick={() => void acceptInvite()}>{busy ? (ar ? 'جارٍ التفعيل…' : 'Activating…') : (ar ? 'قبول الدعوة وتفعيل حساب المعلم' : 'Accept invitation and activate teacher account')}</button>{error && <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}</div>
 

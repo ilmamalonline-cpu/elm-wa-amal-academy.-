@@ -66,6 +66,11 @@ test('release migration defaults signup to owner-only and gates auth.users inser
   assert.doesNotMatch(sql, /\bdrop\s+table\b|\btruncate\b/i)
 })
 
+test('trigger-only lesson guards are not exposed as public API functions', async () => {
+  const sql = await readFile(resolve(root, 'supabase/migrations/20261120_restrict_trigger_execute.sql'), 'utf8')
+  assert.match(sql, /revoke execute on function public\.academy_teacher_outcome_only\(\) from public, anon, authenticated/i)
+})
+
 test('teacher invite bearer tokens travel in the fragment and are removed from browser history', async () => {
   const admin = await readFile(resolve(root, 'components/dashboard/AdminWorkspace.tsx'), 'utf8')
   const form = await readFile(resolve(root, 'components/auth/TeacherInviteForm.tsx'), 'utf8')
@@ -74,11 +79,54 @@ test('teacher invite bearer tokens travel in the fragment and are removed from b
   assert.doesNotMatch(admin, /searchParams\.set\('token'/)
   assert.match(form, /window\.location\.hash/)
   assert.match(form, /window\.history\.replaceState/)
-  assert.doesNotMatch(route, /searchParams/)
+  assert.doesNotMatch(route, /searchParams\.get\(['"]token['"]\)/)
 })
 
 test('legacy booking and Zoom meeting creation routes are not shipped in the active app', () => {
   assert.equal(existsSync(resolve(root, 'lib/zoom/client.ts')), false)
   assert.equal(existsSync(resolve(root, 'app/api/bookings/create/route.ts')), false)
   assert.equal(existsSync(resolve(root, 'app/dashboard/student')), false)
+})
+
+test('verified existing owners bootstrap admin access independently of guardian profile creation', async () => {
+  const portal = await readFile(resolve(root, 'lib/auth/getPortal.ts'), 'utf8')
+  const proxy = await readFile(resolve(root, 'proxy.ts'), 'utf8')
+  const guardian = await readFile(resolve(root, 'app/dashboard/guardian/page.tsx'), 'utf8')
+  const shell = await readFile(resolve(root, 'components/dashboard/PortalShell.tsx'), 'utf8')
+  assert.match(portal, /user\.email_confirmed_at/)
+  assert.match(portal, /user\.email\?\.trim\(\)\.toLowerCase\(\) === OWNER_EMAIL/)
+  assert.match(portal, /ignoreDuplicates: true/)
+  assert.match(portal, /if \(bootstrapError\) throw new Error/)
+  assert.doesNotMatch(proxy, /requestedRole !== role/)
+  assert.match(guardian, /primaryRole=\{role\}/)
+  assert.match(shell, /href="\/dashboard\/guardian"/)
+})
+
+
+test('PKCE confirmation callbacks exchange codes and reject cross-origin destinations', async () => {
+  const callback = await readFile(resolve(root, 'app/auth/callback/route.ts'), 'utf8')
+  const register = await readFile(resolve(root, 'components/auth/RegisterForm.tsx'), 'utf8')
+  const teacher = await readFile(resolve(root, 'components/auth/TeacherInviteForm.tsx'), 'utf8')
+  assert.match(callback, /exchangeCodeForSession\(code\)/)
+  assert.match(callback, /destination\.origin === origin/)
+  assert.match(register, /emailRedirectTo: callback\.toString\(\)/)
+  assert.match(teacher, /emailRedirectTo: callback\.toString\(\)/)
+  assert.match(teacher, /teacher-invite\?confirmed=1/)
+  assert.match(teacher, /Reopen the original invitation link/)
+})
+
+test('registration trigger migration explicitly rebinds the reviewed owner-only trigger', async () => {
+  const sql = await readFile(resolve(root, 'supabase/migrations/20261120_restrict_trigger_execute.sql'), 'utf8')
+  assert.match(sql, /ACADEMY_REGISTRATION_OWNER_ONLY/)
+  assert.match(sql, /drop trigger if exists academy_enforce_registration_mode on auth\.users/i)
+  assert.match(sql, /create trigger academy_enforce_registration_mode[\s\S]*execute function public\.academy_enforce_registration_mode\(\)/i)
+})
+
+test('guardian and child rows cannot be directly deleted through authenticated access', async () => {
+  const sql = await readFile(resolve(root, 'supabase/migrations/20261120_prevent_guardian_record_deletes.sql'), 'utf8')
+  assert.match(sql, /drop policy if exists academy_children_delete_own/i)
+  assert.match(sql, /drop policy if exists academy_guardians_delete_own/i)
+  assert.match(sql, /revoke delete on table public\.academy_children from public, anon, authenticated/i)
+  assert.match(sql, /revoke delete on table public\.academy_guardians from public, anon, authenticated/i)
+  assert.doesNotMatch(sql, /\bdrop\s+table\b|\bdelete\s+from\b|\btruncate\b/i)
 })

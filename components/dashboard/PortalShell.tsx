@@ -11,7 +11,7 @@ const roleNames: Record<PortalRole, Record<Locale, string>> = {
   admin: { ar: 'إدارة الأكاديمية', en: 'Academy administration' },
 }
 
-export function PortalShell({ role, locale, children }: { role: PortalRole; locale: Locale; children: React.ReactNode }) {
+export function PortalShell({ role, primaryRole = role, locale, children }: { role: PortalRole; primaryRole?: PortalRole; locale: Locale; children: React.ReactNode }) {
   const home = `/dashboard/${role}`
   return (
     <div className="min-h-screen bg-parchment">
@@ -25,6 +25,8 @@ export function PortalShell({ role, locale, children }: { role: PortalRole; loca
             </span>
           </Link>
           <div className="flex items-center gap-3">
+            {role !== 'guardian' && <Link className="text-sm font-semibold text-sidr-700 underline" href="/dashboard/guardian">{locale === 'ar' ? 'مساحة أسرتي' : 'My family'}</Link>}
+            {role === 'guardian' && primaryRole !== 'guardian' && <Link className="text-sm font-semibold text-sidr-700 underline" href={`/dashboard/${primaryRole}`}>{roleNames[primaryRole][locale]}</Link>}
             <span className="hidden rounded-full border border-gold-300 bg-gold-100 px-3 py-1 text-xs font-semibold text-gold-700 sm:inline">
               {locale === 'ar' ? 'المدفوعات تجريبية فقط' : 'Payments are simulated only'}
             </span>
