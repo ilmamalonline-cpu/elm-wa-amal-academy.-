@@ -23,9 +23,9 @@ export async function getPortalRole(): Promise<{ role: PortalRole; user: User }>
       { onConflict: 'id', ignoreDuplicates: true },
     )
     if (bootstrapError) throw new Error('Unable to initialize owner administrator access.')
-    const result = await supabase.from('academy_admins').select('id').eq('id', user.id).maybeSingle()
-    if (result.error || !result.data) throw new Error('Unable to verify owner administrator access.')
-    admin = result.data
+    // Success means the row was inserted or already existed. A repeated GET in
+    // the same render can otherwise reuse the pre-insert empty response.
+    admin = { id: user.id }
   }
   if (admin) return { role: 'admin', user }
 
