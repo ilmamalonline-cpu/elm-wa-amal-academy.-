@@ -130,3 +130,13 @@ test('guardian and child rows cannot be directly deleted through authenticated a
   assert.match(sql, /revoke delete on table public\.academy_guardians from public, anon, authenticated/i)
   assert.doesNotMatch(sql, /\bdrop\s+table\b|\bdelete\s+from\b|\btruncate\b/i)
 })
+
+test('follow-up, lesson, assignment, and teacher records reject direct client deletes', async () => {
+  const sql = await readFile(resolve(root, 'supabase/migrations/20261121_prevent_followup_record_deletes.sql'), 'utf8')
+  for (const table of ['academy_learning_plans', 'academy_practice_entries', 'academy_individual_lessons', 'academy_teacher_assignments', 'academy_teachers']) {
+    assert.match(sql, new RegExp(`revoke delete on table public\\.${table} from public, anon, authenticated`, 'i'))
+    assert.match(sql, new RegExp(`'public\\.${table}'`, 'i'))
+  }
+  assert.match(sql, /has_table_privilege/i)
+  assert.doesNotMatch(sql, /\bdrop\s+table\b|\bdelete\s+from\b|\btruncate\b/i)
+})
